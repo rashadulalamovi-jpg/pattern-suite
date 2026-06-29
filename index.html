@@ -216,6 +216,7 @@ const Sync = {
     this.db=firebase.firestore(); this.auth=firebase.auth();
     try{ this.db.enablePersistence({synchronizeTabs:true}).catch(function(){}); }catch(e){}
     var self=this;
+    showLogin();
     this.auth.onAuthStateChanged(function(u){ if(u){ self.onLogin(u); } else { self.onLogout(); } });
   },
   onLogin(u){
