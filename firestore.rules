@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pattern Suite-এর data: শুধু owner নিজের data পড়তে/লিখতে পারবে
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // আপনার CRM-এর পুরোনো collections (advances, customers, ...) — আগের rules অপরিবর্তিত রাখুন।
+    // এই block শুধু Pattern Suite-এর জন্য যোগ করুন, পুরোনোগুলো মুছবেন না।
+  }
+}
