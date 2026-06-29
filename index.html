@@ -195,15 +195,15 @@ set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} try{ if(typeo
 /* ============ FIREBASE + FCM (Cowork: এখানে আপনার config বসান) ============ */
 /* Firebase Console → Project settings → "Your apps" → Web app → SDK config থেকে নিচের object টা পুরোটা copy করে replace করুন */
 const FB_CONFIG = {
-  apiKey: "PASTE_apiKey",
-  authDomain: "PASTE.firebaseapp.com",
-  projectId: "PASTE_projectId",
-  storageBucket: "PASTE.appspot.com",
-  messagingSenderId: "PASTE_senderId",
-  appId: "PASTE_appId"
+  apiKey: "AIzaSyB6BZuchGQ-i87jHhVHtgiS0bohsXXufhk",
+  authDomain: "ctg-click-shop-crm.firebaseapp.com",
+  projectId: "ctg-click-shop-crm",
+  storageBucket: "ctg-click-shop-crm.firebasestorage.app",
+  messagingSenderId: "418153694896",
+  appId: "1:418153694896:web:9821e895e5f41d441ddd75"
 };
 /* Cloud Messaging → Web Push certificates → "Key pair" টা এখানে বসান */
-const VAPID_KEY = "PASTE_vapidKey";
+const VAPID_KEY = "BF1l_tRjCN3Skeo3Cl5SGTrLC9vaK7EEYf8YZB8TBSg3s7EBcUYZOVKgQO5mRcYNNBSR5rXGcqwX5gO27GJ5ckw";
 const FB_ON = FB_CONFIG.apiKey && FB_CONFIG.apiKey.indexOf("PASTE")<0;
 const ICON_DATA='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#bd2020"/><g fill="none" stroke="#fff" stroke-width="5"><circle cx="32" cy="32" r="18"/><circle cx="32" cy="32" r="10"/></g><circle cx="32" cy="32" r="4" fill="#fff"/></svg>');
 
