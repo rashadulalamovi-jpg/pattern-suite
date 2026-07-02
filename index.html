@@ -928,22 +928,50 @@ const AREAS=[
 ];
 const SKIPR=['No time','Avoidance','Low energy','Forgot','Fear / discomfort','Blocked','Not important'];
 const aMeta=k=>AREAS.find(a=>a.k===k)||AREAS[0];
-let D={tasks:[]},view='list',fStart=0,fInt=null;
+let D={tasks:[]},view='list',fStart=0,fInt=null,histFilter='yesterday',_skipCb=null;
 const save=()=>Store.set(KEY,D);
 const load=()=>{const d=Store.get(KEY,null);D=d&&d.tasks?d:{tasks:[]};};
 const today=()=>D.tasks.filter(t=>t.date===td()).sort((a,b)=>(b.score||0)-(a.score||0)||(a.order||0)-(b.order||0));
+const yest=()=>{const y=new Date();y.setDate(y.getDate()-1);return y.toISOString().split('T')[0];};
 const lifeTargets=()=>{try{return Store.get('ctg-life-v1',[])||[];}catch(e){return[];}};
 
-function init(){load();view='list';renderTabs();render();}
-function renderTabs(){var t=[['list','Tasks','ti-list-check'],['focus','Focus','ti-target'],['review','Review','ti-chart-line']];document.getElementById('tabbar').innerHTML='<div class="tabs">'+t.map(function(x){return '<button class="'+(view===x[0]?'on':'')+'" onclick="PRIO.go(\''+x[0]+'\')"><i class="ti '+x[2]+'"></i>'+x[1]+'</button>';}).join('')+'</div>';}
-function render(){document.getElementById('view').innerHTML=view==='focus'?vFocus():view==='review'?vReview():vList();if(typeof renderHero==='function')renderHero();}
-function open(){ if(typeof App!=='undefined') App.show('prio'); }
-function close(){}
 
+function init(){load();view='list';renderTabs();render();}
+function renderTabs(){
+var t=[['list','Tasks','ti-list-check'],['focus','Focus','ti-target'],['history','History','ti-history'],['review','Review','ti-chart-line']];
+document.getElementById('tabbar').innerHTML='<div class="tabs">'+t.map(function(x){return '<button class="'+(view===x[0]?'on':'')+'" onclick="PRIO.go(\''+x[0]+'\')">'+'<i class="ti '+x[2]+'"></i>'+x[1]+'</button>';}).join('')+'</div>';}
+function render(){document.getElementById('view').innerHTML=view==='focus'?vFocus():view==='review'?vReview():view==='history'?vHistory():vList();if(typeof renderHero==='function')renderHero();}
+function open(){if(typeof App!=='undefined')App.show('prio');}
+function close(){}
 /* ---- LIST ---- */
 function vList(){
 const t=today();const done=t.filter(x=>x.status==='Done').length;
 let h='<div class="muted" style="display:flex;align-items:center;gap:7px;margin-bottom:12px"><i class="ti ti-flame" style="color:var(--br);font-size:18px"></i> <span style="font-weight:600;color:var(--tp)">আজকের যুদ্ধ — Today Must Win</span></div>';
+// pattern alerts
+const _palerts=detectPatterns();
+_palerts.forEach(al=>h+='<div class="card" style="border-color:var(--ambd);background:var(--amb);color:var(--am);font-size:12px;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> '+al+'</div>');
+// yesterday summary
+const _yd=yest();const _ytasks=D.tasks.filter(x=>x.date===_yd);
+const _ydone=_ytasks.filter(x=>x.status==='Done').length;
+const _yskip=_ytasks.filter(x=>x.status==='Skipped').length;
+const _ypend=_ytasks.filter(x=>x.status==='Pending'||x.status==='Blocked'||x.status==='Focus').length;
+const _ycarry=_ytasks.filter(x=>x.status!=='Done').length;
+if(_ytasks.length){
+h+='<div class="card" style="background:var(--s1);border-color:var(--bd);margin-bottom:12px">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+h+='<div style="font-size:13px;font-weight:600;color:var(--tp)"><i class="ti ti-clock-hour-3"></i> গতকাল</div>';
+h+='<button onclick="PRIO.go(\'history\')" style="font-size:11px;color:var(--ac);background:none;border:none;cursor:pointer;font-family:var(--fs)">সব দেখুন →</button></div>';
+h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
+h+='<span class="b" style="background:var(--gnb);color:var(--gn)">✓ '+_ydone+' Done</span>';
+if(_yskip)h+='<span class="b bR">➤ '+_yskip+' Skipped</span>';
+if(_ypend)h+='<span class="b bY">⏳ '+_ypend+' Pending</span>';
+h+='<span style="font-size:11px;color:var(--tm);align-self:center">মোট: '+_ytasks.length+'</span>';
+h+='</div>';
+if(_ycarry>0){h+='<div style="margin-top:8px">';
+h+='<button onclick="PRIO.go(\'history\')" style="width:100%;padding:8px;background:var(--acb);color:var(--ac);border:1px solid var(--acbd);border-radius:var(--rad);font-family:var(--fs);font-size:12px;font-weight:500;cursor:pointer">';
+h+='<i class="ti ti-arrow-forward-up"></i> '+_ycarry+' Task Today-তে নিয়ে আসুন</button></div>';}
+h+='</div>';
+}
 // summary
 const pct=t.length?Math.round(done*100/t.length):0;
 h+='<div class="card" style="background:linear-gradient(135deg,var(--brb),var(--amb));border:none"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:13px;color:var(--ts)">Must Win সম্পন্ন</div><div style="font-size:20px;font-weight:800;color:var(--br)">'+done+' / '+t.length+'</div></div><div class="pbar" style="margin:0"><div style="width:'+pct+'%;background:var(--br)"></div></div></div>';
@@ -951,7 +979,7 @@ if(t.length>5)h+='<div class="card" style="background:var(--rdb);border-color:va
 if(t.filter(x=>x.status!=='Done'&&x.status!=='Skipped').length)h+='<button class="sb" style="margin-bottom:12px;background:var(--br)" onclick="PRIO.enterFocus()"><i class="ti ti-player-play"></i> Focus Mode শুরু করুন</button>';
 // task cards
 t.forEach((x,i)=>{const a=aMeta(x.area);const sb=x.status==='Done'?'bG':x.status==='Focus'?'bB':x.status==='Skipped'?'bR':x.status==='Blocked'?'bY':'';
-h+='<div class="card" style="border-color:'+(x.status==='Focus'?a.fill:'var(--bd)')+'"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div style="font-size:14px;font-weight:600;line-height:1.3;flex:1;'+(x.status==='Done'?'text-decoration:line-through;color:var(--tm)':'')+'">'+esc(x.name)+'</div><button onclick="PRIO.del('+x.id+')" style="background:none;border:none;color:var(--tm);cursor:pointer;font-size:13px">✕</button></div>';
+h+='<div class="card" style="border-color:'+(x.status==='Focus'?a.fill:'var(--bd)')+'"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div style="font-size:14px;font-weight:600;line-height:1.3;flex:1;'+(x.status==='Done'?'text-decoration:line-through;color:var(--tm)':'')+'">'+esc(x.name)+'</div>+(x.carryForwardFrom?'<div style="font-size:10px;color:var(--ac);font-weight:400;margin-top:2px">↳ Carried: '+x.carryForwardFrom+'</div>':'')<button onclick="PRIO.del('+x.id+')" style="background:none;border:none;color:var(--tm);cursor:pointer;font-size:13px">✕</button></div>';
 h+='<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px"><span class="b" style="background:'+a.bg+';color:'+a.tx+'"><i class="ti '+a.icon+'"></i> '+a.bn+'</span><span class="b bY">P'+(x.score||3)+'</span>'+(sb?'<span class="b '+sb+'">'+x.status+'</span>':'')+(x.deadline?'<span class="b" style="background:var(--s1);color:var(--tm)">⏱ '+esc(x.deadline)+'</span>':'')+'</div>';
 if(x.targetName)h+='<div style="font-size:11px;color:var(--tm);margin-bottom:3px">🎯 Target: '+esc(x.targetName)+'</div>';
 if(x.why)h+='<div style="font-size:12px;color:var(--ts);margin-bottom:3px;line-height:1.5">❓ '+esc(x.why)+'</div>';
@@ -976,12 +1004,14 @@ h+='<label class="lbl">Pattern Linked (ঐচ্ছিক)</label><input id="ptp
 h+='<button class="sb" style="background:var(--br)" onclick="PRIO.add()"><i class="ti ti-plus"></i> Task যোগ করুন</button></div>';
 return h;
 }
+
 function go(v){view=v;renderTabs();render();}
+
 function add(){
 const name=document.getElementById('ptn').value.trim();if(!name){alert('Task নাম দিন');return;}
 if(today().length>=5&&!confirm('আজ already ৫টা priority task আছে। Focus break হতে পারে — তবুও যোগ করবেন?'))return;
 const tgId=document.getElementById('ptt').value;const tg=lifeTargets().find(g=>String(g.id)===tgId);
-D.tasks.push({id:Date.now(),date:td(),name,area:document.getElementById('pta').value,score:+document.getElementById('pts').value,targetId:tgId||'',targetName:tg?((tg.area||'')+' — '+(tg.title||'')):'',why:document.getElementById('ptw').value,deadline:document.getElementById('ptd').value,outputGoal:document.getElementById('ptg').value,pattern:document.getElementById('ptp').value,status:'Pending',output:'',skipReason:'',focusMin:0,order:D.tasks.length});
+D.tasks.push({id:Date.now(),date:td(),name,area:document.getElementById('pta').value,score:+document.getElementById('pts').value,targetId:tgId||'',targetName:tg?((tg.area||'')+' — '+(tg.title||'')):'',why:document.getElementById('ptw').value,deadline:document.getElementById('ptd').value,outputGoal:document.getElementById('ptg').value,pattern:document.getElementById('ptp').value,status:'Pending',output:'',skipReason:'',focusMin:0,order:D.tasks.length,createdAt:new Date().toISOString(),carryForwardFrom:''});
 save();render();
 }
 function del(id){D.tasks=D.tasks.filter(t=>t.id!==id);save();render();}
@@ -1015,30 +1045,149 @@ return h;
 }
 function startTimer(){fStart=Date.now();if(fInt)clearInterval(fInt);fInt=setInterval(function(){var el=document.getElementById('prioTimer');if(el){var s=Math.floor((Date.now()-fStart)/1000);el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}else{clearInterval(fInt);fInt=null;}},1000);}
 function stopTimer(){var m=fStart?Math.round((Date.now()-fStart)/60000):0;if(fInt){clearInterval(fInt);fInt=null;}fStart=0;return m;}
-function done(id){const t=D.tasks.find(x=>x.id===id);if(!t)return;const outEl=document.getElementById('prioOut');const out=outEl?outEl.value.trim():'';if(!out){alert('গুরুত্বপূর্ণ task — Done করার আগে Output লিখুন।');return;}const nx=document.getElementById('prioNext');if(nx)t.nextAction=nx.value;t.output=out;t.focusMin=(t.focusMin||0)+stopTimer();t.status='Done';save();const nextT=today().find(x=>x.status==='Pending');if(nextT){startFocus(nextT.id);}else{view='list';render();}}
-function doneAsk(id){const t=D.tasks.find(x=>x.id===id);if(!t)return;const out=prompt('Output লিখুন (এই task থেকে কী তৈরি হলো?):',t.output||'');if(out===null||!out.trim())return;t.output=out.trim();t.status='Done';save();render();}
-function skipAsk(id){const t=D.tasks.find(x=>x.id===id);if(!t)return;const r=prompt('Skip reason:\n'+SKIPR.map((s,i)=>(i+1)+'. '+s).join('\n')+'\n\n১–৭ নম্বর লিখুন:','');if(r===null)return;const idx=parseInt(r)-1;t.skipReason=SKIPR[idx]||r;t.status='Skipped';stopTimer();save();const nextT=today().find(x=>x.status==='Pending');if(view==='focus'&&nextT){startFocus(nextT.id);}else{view='list';render();}}
+function done(id){const t=D.tasks.find(x=>x.id===id);if(!t)return;const outEl=document.getElementById('prioOut');const out=outEl?outEl.value.trim():'';if(!out){alert('গুরুত্বপূর্ণ task — Done করার আগে Output লিখুন।');return;}const nx=document.getElementById('prioNext');if(nx)t.nextAction=nx.value;t.output=out;t.focusMin=(t.focusMin||0)+stopTimer();t.status='Done';t.completedAt=new Date().toISOString();save();const nextT=today().find(x=>x.status==='Pending');if(nextT){startFocus(nextT.id);}else{view='list';render();}}
+function doneAsk(id){const t=D.tasks.find(x=>x.id===id);if(!t)return;const out=prompt('Output লিখুন (এই task থেকে কী তৈরি হলো?):',t.output||'');if(out===null||!out.trim())return;t.output=out.trim();t.status='Done';t.completedAt=new Date().toISOString();save();render();}
+/* ---- SKIP MODAL ---- */
+function skipAsk(id){
+const t=D.tasks.find(x=>x.id===id);if(!t)return;
+_skipCb=function(reason){
+t.skipReason=reason;t.status='Skipped';t.skippedAt=new Date().toISOString();
+stopTimer();save();
+const nextT=today().find(x=>x.status==='Pending');
+if(view==='focus'&&nextT){startFocus(nextT.id);}else{view='list';render();}
+};
+const mEl=document.getElementById('prioModal');
+if(!mEl){const r=prompt('Skip reason:\n'+SKIPR.map((s,i)=>(i+1)+'. '+s).join('\n')+'\n\n1-'+SKIPR.length+' \u09A8\u09AE\u09CD\u09AC\u09B0:','');if(r===null)return;const idx=parseInt(r)-1;if(_skipCb){_skipCb(SKIPR[idx]||r);_skipCb=null;}return;}
+const opts=SKIPR.map((s,i)=>'<button onclick="PRIO._doSkip(\''+s+'\')" style="width:100%;text-align:left;padding:10px 14px;background:var(--s1);border:none;border-radius:var(--rad);margin-bottom:6px;font-family:var(--fs);font-size:13px;color:var(--tp);cursor:pointer;display:block"><i class=\"ti ti-x\" style=\"color:var(--rd)\"></i> '+s+'</button>').join('');
+document.getElementById('prioSheet').innerHTML='<div style="padding:16px"><div style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--rd)"><i class="ti ti-alert-circle"></i> Skip \u0995\u09BE\u09B0\u09A3</div><div style="font-size:12px;color:var(--ts);margin-bottom:14px">\u09AA\u09CD\u09AF\u09BE\u099F\u09BE\u09B0\u09CD\u09A8 \u09A1\u09BF\u099F\u09C7\u0995\u09CD\u09B6\u09A8\u09C7\u09B0 \u099C\u09A8\u09CD\u09AF \u098F\u099F\u09BE \u0997\u09C1\u09B0\u09C1\u09A4\u09CD\u09AC\u09AA\u09C2\u09B0\u09CD\u09A3\u0964</div>'+opts+'<button onclick="PRIO._cancelSkip()" style="width:100%;padding:10px;background:var(--s2);border:none;border-radius:var(--rad);font-family:var(--fs);font-size:13px;color:var(--tm);cursor:pointer;margin-top:4px">\u09AC\u09BE\u09A4\u09BF\u09B2</button></div>';
+mEl.style.display='flex';
+}
+function _doSkip(reason){const mEl=document.getElementById('prioModal');if(mEl)mEl.style.display='none';if(_skipCb){_skipCb(reason);_skipCb=null;}}
+function _cancelSkip(){const mEl=document.getElementById('prioModal');if(mEl)mEl.style.display='none';_skipCb=null;}
+
+/* ---- HISTORY ---- */
+function vHistory(){
+const yd=yest();
+const filters=[['yesterday','\u0997\u09A4\u0995\u09BE\u09B2'],['week','\u098F\u0987 \u09B8\u09AA\u09CD\u09A4\u09BE\u09B9'],['done','Done'],['skipped','Skipped'],['pending','Pending'],['carried','Carried'],['all','\u09B8\u09AC']];
+let h='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">';
+filters.forEach(function(f){h+='<button onclick="PRIO._setHistFilter(\''+f[0]+'\')" style="padding:5px 10px;font-size:11px;border-radius:100px;border:1px solid var(--bd);background:'+(histFilter===f[0]?'var(--ac)':'var(--s1)')+';color:'+(histFilter===f[0]?'#fff':'var(--ts)')+';cursor:pointer;font-family:var(--fs)">'+f[1]+'</button>';});
+h+='</div>';
+let taskList=D.tasks.filter(function(x){return x.date!==td();});
+if(histFilter==='yesterday')taskList=taskList.filter(function(x){return x.date===yd;});
+else if(histFilter==='week'){const w=new Date();w.setDate(w.getDate()-7);const ws=w.toISOString().split('T')[0];taskList=taskList.filter(function(x){return x.date>=ws;});}
+else if(histFilter==='done')taskList=taskList.filter(function(x){return x.status==='Done';});
+else if(histFilter==='skipped')taskList=taskList.filter(function(x){return x.status==='Skipped';});
+else if(histFilter==='pending')taskList=taskList.filter(function(x){return x.status==='Pending'||x.status==='Blocked'||x.status==='Focus';});
+else if(histFilter==='carried')taskList=taskList.filter(function(x){return !!x.carryForwardFrom;});
+if(!taskList.length){h+='<div class="empty">\u09B9\u09BF\u09B8\u09CD\u099F\u09B0\u09BF \u09A8\u09C7\u0987\u0964 \u0995\u09BE\u099C \u09AF\u09CB\u0997 \u0995\u09B0\u09C1\u09A8 \u098F\u09AC\u0982 \u09AA\u09B0\u09C7\u09B0 \u09A6\u09BF\u09A8 \u09A6\u09C7\u0996\u09C1\u09A8\u0964</div>';return h;}
+const byDate={};
+taskList.forEach(function(x){if(!byDate[x.date])byDate[x.date]=[];byDate[x.date].push(x);});
+Object.keys(byDate).sort(function(a,b){return b.localeCompare(a);}).forEach(function(date){
+const tasks=byDate[date];
+const doneT=tasks.filter(function(x){return x.status==='Done';});
+const skipT=tasks.filter(function(x){return x.status==='Skipped';});
+const pendT=tasks.filter(function(x){return x.status==='Pending'||x.status==='Blocked'||x.status==='Focus';});
+h+='<div style="font-size:13px;font-weight:700;color:var(--ac);margin:16px 0 8px">\uD83D\uDCC5 '+date+(date===yd?' (\u0997\u09A4\u0995\u09BE\u09B2)':'')+' <span style="font-weight:400;font-size:11px;color:var(--tm)">'+tasks.length+' tasks</span></div>';
+const rc=function(x){
+const a=aMeta(x.area);
+const sc=x.status==='Done'?'border-left:3px solid var(--gn)':x.status==='Skipped'?'border-left:3px solid var(--rd)':x.status==='Blocked'?'border-left:3px solid var(--am)':'border-left:3px solid var(--bd)';
+const todayDupe=D.tasks.some(function(t){return t.date===td()&&t.carryForwardFrom===date&&t.name===x.name;});
+const sb=x.status==='Done'?'<span class="b bG">Done</span>':x.status==='Skipped'?'<span class="b bR">Skipped</span>':x.status==='Blocked'?'<span class="b bY">Blocked</span>':'<span class="b" style="background:var(--s1);color:var(--tm)">Pending</span>';
+h+='<div class="card" style="padding:10px 12px;margin-bottom:6px;'+sc+'">';
+h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px"><div style="font-size:13px;font-weight:500;line-height:1.3;flex:1">'+esc(x.name)+'</div>'+sb+'</div>';
+h+='<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px">';
+h+='<span class="b" style="background:'+a.bg+';color:'+a.tx+';font-size:10px"><i class="ti '+a.icon+'"></i> '+a.bn+'</span>';
+h+='<span class="b bY" style="font-size:10px">P'+(x.score||3)+'</span>';
+if(x.carryForwardFrom)h+='<span class="b" style="background:var(--acb);color:var(--ac);font-size:10px">\u21B3 From: '+x.carryForwardFrom+'</span>';
+h+='</div>';
+if(x.targetName)h+='<div style="font-size:11px;color:var(--tm);margin-bottom:3px">\uD83C\uDFAF '+esc(x.targetName)+'</div>';
+if(x.output)h+='<div style="font-size:11px;background:var(--gnb);border-radius:6px;padding:4px 8px;color:var(--gn);margin-bottom:4px">\u2713 '+esc(x.output)+'</div>';
+if(x.skipReason)h+='<div style="font-size:11px;background:var(--rdb);border-radius:6px;padding:4px 8px;color:var(--rd);margin-bottom:4px">\u27A3 '+x.skipReason+'</div>';
+if(x.pattern)h+='<div style="font-size:11px;color:var(--pr);margin-bottom:4px">\uD83D\uDD01 '+esc(x.pattern)+'</div>';
+if(x.status!=='Done'&&!todayDupe)h+='<button onclick="PRIO.carryForward('+x.id+',\''+date+'\')" style="width:100%;margin-top:4px;padding:7px;background:var(--acb);color:var(--ac);border:1px solid var(--acbd);border-radius:var(--rad);font-family:var(--fs);font-size:12px;cursor:pointer"><i class="ti ti-arrow-forward-up"></i> Today-\u09A4\u09C7 Carry</button>';
+if(x.status!=='Done'&&todayDupe)h+='<div style="font-size:11px;color:var(--gn);margin-top:4px">\u2713 Today-\u09A4\u09C7 Carried</div>';
+h+='</div>';
+};
+if(doneT.length){h+='<div style="font-size:11px;color:var(--gn);font-weight:500;margin:8px 0 4px">\u2705 Done ('+doneT.length+')</div>';doneT.forEach(rc);}
+if(skipT.length){h+='<div style="font-size:11px;color:var(--rd);font-weight:500;margin:8px 0 4px">\u274C Skipped ('+skipT.length+')</div>';skipT.forEach(rc);}
+if(pendT.length){h+='<div style="font-size:11px;color:var(--am);font-weight:500;margin:8px 0 4px">\u23F3 Pending / Blocked ('+pendT.length+')</div>';pendT.forEach(rc);}
+});
+return h;
+}
+function _setHistFilter(f){histFilter=f;render();}
+function carryForward(id,fromDate){
+const orig=D.tasks.find(function(x){return x.id===id;});if(!orig)return;
+const alreadyCarried=D.tasks.some(function(t){return t.date===td()&&t.carryForwardFrom===fromDate&&t.name===orig.name;});
+if(alreadyCarried){alert('\u0987\u09A4\u09BF\u09AE\u09A7\u09CD\u09AF\u09C7 \u0986\u099C\u0995\u09C7\u09B0 \u09B2\u09BF\u09B8\u09CD\u099F\u09C7 \u099B\u09C7 \u0964');return;}
+D.tasks.push({id:Date.now(),date:td(),name:orig.name,area:orig.area,score:orig.score||3,targetId:orig.targetId||'',targetName:orig.targetName||'',why:orig.why||'',deadline:orig.deadline||'',outputGoal:orig.outputGoal||'',pattern:orig.pattern||'',status:'Pending',output:'',skipReason:'',focusMin:0,order:D.tasks.length,createdAt:new Date().toISOString(),carryForwardFrom:fromDate});
+save();render();
+}
+
+/* ---- PATTERN DETECTION ---- */
+function detectPatterns(){
+const alerts=[];
+const w=new Date();w.setDate(w.getDate()-7);const ws=w.toISOString().split('T')[0];
+const wkTasks=D.tasks.filter(function(x){return x.date>=ws&&x.date!==td()&&x.status==='Skipped';});
+const patSkip={};const nameSkip={};
+wkTasks.forEach(function(x){
+if(x.pattern)patSkip[x.pattern]=(patSkip[x.pattern]||0)+1;
+nameSkip[x.name]=(nameSkip[x.name]||0)+1;
+});
+Object.entries(patSkip).forEach(function(e){if(e[1]>=3)alerts.push('"'+e[0]+'" \u098F\u0987 \u09B8\u09AA\u09CD\u09A4\u09BE\u09B9\u09C7 '+e[1]+'\u09AC\u09BE\u09B0 skip \u09B9\u09AF\u09BC\u09C7\u099B\u09C7\u0964 Review \u0995\u09B0\u09C1\u09A8\u0964');});
+Object.entries(nameSkip).forEach(function(e){if(e[1]>=3)alerts.push('"'+e[0]+'" '+e[1]+'\u09AC\u09BE\u09B0 skip \u09B9\u09AF\u09BC\u09C7\u099B\u09C7\u0964 Correction \u09A6\u09B0\u0995\u09BE\u09B0\u0964');});
+const skipReasons={};
+wkTasks.filter(function(x){return x.skipReason;}).forEach(function(x){skipReasons[x.skipReason]=(skipReasons[x.skipReason]||0)+1;});
+const topR=Object.entries(skipReasons).sort(function(a,b){return b[1]-a[1];})[0];
+if(topR&&topR[1]>=3)alerts.push('Most common skip reason: "'+topR[0]+'" ('+topR[1]+'\u09AC\u09BE\u09B0)\u0964');
+return alerts;
+}
 
 /* ---- REVIEW ---- */
 function vReview(){
-const t=today();const done=t.filter(x=>x.status==='Done');const skip=t.filter(x=>x.status==='Skipped');
-const outC=done.filter(x=>x.output).length;
-const risk=skip.filter(x=>x.skipReason==='Avoidance'||x.skipReason==='Fear / discomfort').length;
+const t=today();const done=t.filter(function(x){return x.status==='Done';});const skip=t.filter(function(x){return x.status==='Skipped';});
+const pend=t.filter(function(x){return x.status!=='Done'&&x.status!=='Skipped';});
+const outC=done.filter(function(x){return x.output;}).length;
+const risk=skip.filter(function(x){return x.skipReason==='Avoidance'||x.skipReason==='Fear / discomfort';}).length;
+const w=new Date();w.setDate(w.getDate()-7);const ws=w.toISOString().split('T')[0];
+const wkAll=D.tasks.filter(function(x){return x.date>=ws&&x.date!==td();});
+const wkDone=wkAll.filter(function(x){return x.status==='Done';}).length;
+const wkSkip=wkAll.filter(function(x){return x.status==='Skipped';}).length;
+const wkPct=wkAll.length?Math.round(wkDone*100/wkAll.length):0;
+const areaSkip={};
+wkAll.filter(function(x){return x.status==='Skipped';}).forEach(function(x){areaSkip[x.area]=(areaSkip[x.area]||0)+1;});
+const topSkipArea=Object.entries(areaSkip).sort(function(a,b){return b[1]-a[1];})[0];
 let h='';
 h+='<div class="grid2" style="margin-bottom:6px">';
-const sc=(l,v,c)=>'<div class="sg"><div class="kpiL">'+l+'</div><div class="kpiV" style="font-size:19px;color:'+(c||'var(--tp)')+'">'+v+'</div></div>';
-h+=sc('মোট Priority',t.length)+sc('Done',done.length,'var(--gn)')+sc('Skipped',skip.length,'var(--rd)')+sc('Output তৈরি',outC,'var(--gn)')+sc('CEO Wins',done.length,'var(--ac)')+sc('Pattern Risk',risk,risk?'var(--rd)':'var(--gn)');
+const sc=function(l,v,c){return '<div class="sg"><div class="kpiL">'+l+'</div><div class="kpiV" style="font-size:19px;color:'+(c||'var(--tp)')+'">'+v+'</div></div>';};
+h+=sc('\u09AE\u09CB\u099F Priority',t.length)+sc('Done',done.length,'var(--gn)')+sc('Skipped',skip.length,'var(--rd)')+sc('Output \u09A4\u09C8\u09B0\u09BF',outC,'var(--gn)')+sc('CEO Wins',done.length,'var(--ac)')+sc('Pattern Risk',risk,risk?'var(--rd)':'var(--gn)');
 h+='</div>';
-h+='<div class="card" style="background:var(--acb);border-color:var(--acbd)"><div style="font-size:13px;font-weight:600;color:var(--ac);margin-bottom:8px"><i class="ti ti-arrow-right-circle"></i> আগামীকালের Correction</div>';
-if(risk>0)h+='<div style="font-size:12px;color:var(--ts);margin-bottom:5px">• '+risk+'টা task Avoidance/Fear-এ skip হয়েছে — কাল সেগুলো <b>সবার আগে</b> করুন।</div>';
-const pend=t.filter(x=>x.status!=='Done'&&x.status!=='Skipped');
-if(pend.length)h+='<div style="font-size:12px;color:var(--ts);margin-bottom:5px">• '+pend.length+'টা task অসম্পূর্ণ — কাল carry-over করুন।</div>';
-if(!risk&&!pend.length&&done.length)h+='<div style="font-size:12px;color:var(--gn)">✓ দারুণ! আজকের সব যুদ্ধ জিতেছেন।</div>';
-if(!t.length)h+='<div style="font-size:12px;color:var(--tm)">আজ কোনো priority task ছিল না।</div>';
+// yesterday carry forward
+const _yd=yest();const _ytasks=D.tasks.filter(function(x){return x.date===_yd;});
+const _ycarry=_ytasks.filter(function(x){return x.status!=='Done';});
+if(_ycarry.length){
+h+='<div class="card" style="background:var(--acb);border-color:var(--acbd)"><div style="font-size:13px;font-weight:600;color:var(--ac);margin-bottom:8px"><i class="ti ti-arrow-forward-up"></i> \u0997\u09A4\u0995\u09BE\u09B2\u09C7\u09B0 Carry Forward</div>';
+_ycarry.forEach(function(x){
+const todayDupe=D.tasks.some(function(t){return t.date===td()&&t.carryForwardFrom===_yd&&t.name===x.name;});
+h+='<div style="font-size:12px;padding:7px 9px;background:var(--s1);border-radius:var(--rad);margin-bottom:5px;display:flex;justify-content:space-between;align-items:center"><span>'+esc(x.name)+' <span style="color:var(--rd)">('+x.status+')</span></span>';
+if(!todayDupe)h+='<button onclick="PRIO.carryForward('+x.id+',\''+_yd+'\')" style="font-size:11px;padding:4px 8px;background:var(--ac);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:var(--fs)">Carry</button>';
+else h+='<span style="font-size:11px;color:var(--gn)">\u2713 done</span>';
+h+='</div>';
+});
+h+='</div>';
+}
+// weekly
+h+='<div class="card" style="background:var(--acb);border-color:var(--acbd)"><div style="font-size:13px;font-weight:600;color:var(--ac);margin-bottom:8px"><i class="ti ti-calendar-week"></i> \u098F\u0987 \u09B8\u09AA\u09CD\u09A4\u09BE\u09B9 (7 \u09A6\u09BF\u09A8)</div><div class="grid3" style="text-align:center">';
+[[wkAll.length,'\u09AE\u09CB\u099F','var(--ac)'],[wkDone,'Done','var(--gn)'],[wkSkip,'Skipped','var(--rd)']].forEach(function(r){h+='<div><div style="font-size:22px;font-weight:600;color:'+r[2]+'">'+r[0]+'</div><div style="font-size:11px;color:'+r[2]+'">'+r[1]+'</div></div>';});
+h+='</div><div style="font-size:12px;color:var(--ts);margin-top:8px">\u09B8\u09BE\u09AB\u09B2\u09CD\u09AF: '+wkPct+'% | Most skip area: '+(topSkipArea?topSkipArea[0]:'\u2014')+'</div></div>';
+h+='<div class="card" style="background:var(--acb);border-color:var(--acbd)"><div style="font-size:13px;font-weight:600;color:var(--ac);margin-bottom:8px"><i class="ti ti-arrow-right-circle"></i> \u0986\u0997\u09BE\u09AE\u09C0\u0995\u09BE\u09B2\u09C7\u09B0 Correction</div>';
+if(risk>0)h+='<div style="font-size:12px;color:var(--ts);margin-bottom:5px">\u2022 '+risk+'\u099F\u09BE task Avoidance/Fear-\u098F skip \u2014 \u0995\u09BE\u09B2 \u09B8\u09C7\u0997\u09C1\u09B2\u09CB <b>\u09B8\u09AC\u09BE\u09B0 \u0986\u0997\u09C7</b> \u0995\u09B0\u09C1\u09A8\u0964</div>';
+if(pend.length)h+='<div style="font-size:12px;color:var(--ts);margin-bottom:5px">\u2022 '+pend.length+'\u099F\u09BE task \u0985\u09B8\u09AE\u09CD\u09AA\u09C2\u09B0\u09CD\u09A3 \u2014 \u0995\u09BE\u09B2 carry-over \u0995\u09B0\u09C1\u09A8\u0964</div>';
+if(!risk&&!pend.length&&done.length)h+='<div style="font-size:12px;color:var(--gn)">\u2713 \u09A6\u09BE\u09B0\u09C1\u09A3! \u0986\u099C\u0995\u09C7\u09B0 \u09B8\u09AC \u09AF\u09C1\u09A6\u09CD\u09A7 \u099C\u09BF\u09A4\u09C7\u099B\u09C7\u09A8\u0964</div>';
+if(!t.length)h+='<div style="font-size:12px;color:var(--tm)">\u0986\u099C \u0995\u09CB\u09A8\u09CB priority task \u099B\u09BF\u09B2 \u09A8\u09BE\u0964</div>';
 h+='</div>';
 return h;
 }
-return{init,open,close,go,add,del,startFocus,enterFocus,done,doneAsk,skipAsk};
+return{init,open,close,go,add,del,startFocus,enterFocus,done,doneAsk,skipAsk,_doSkip,_cancelSkip,_setHistFilter,carryForward};
 })();
 /* ============ BOOT ============ */
 Sync.init();
